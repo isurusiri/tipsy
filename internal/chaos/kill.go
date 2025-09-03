@@ -12,7 +12,7 @@ import (
 )
 
 // KillPods deletes pods based on a label selector
-func KillPods(client *kubernetes.Clientset, namespace, selector string, count int, dryRun bool) error {
+func KillPods(client kubernetes.Interface, namespace, selector string, count int, dryRun bool) error {
 	utils.Info(fmt.Sprintf("Searching for pods with selector '%s' in namespace '%s'", selector, namespace))
 
 	// List pods matching the selector
@@ -32,7 +32,10 @@ func KillPods(client *kubernetes.Clientset, namespace, selector string, count in
 
 	// Determine how many pods to kill
 	podsToKill := count
-	if len(pods.Items) < count {
+	if count <= 0 {
+		podsToKill = 0
+		utils.Warn(fmt.Sprintf("Invalid count %d, no pods will be deleted", count))
+	} else if len(pods.Items) < count {
 		podsToKill = len(pods.Items)
 		utils.Warn(fmt.Sprintf("Only %d pods available, limiting kill count to %d", len(pods.Items), podsToKill))
 	}
