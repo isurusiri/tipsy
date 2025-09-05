@@ -461,3 +461,508 @@ func BenchmarkInjectLatency_DryRun(b *testing.B) {
 		InjectLatency(fakeClient, "default", "app=nginx", "200ms", 30*time.Second, true)
 	}
 }
+
+// Helper function to create test pods for packet loss testing
+func createTestPodsForPacketLoss(count int, phase corev1.PodPhase) []corev1.Pod {
+	pods := make([]corev1.Pod, count)
+	for i := 0; i < count; i++ {
+		pods[i] = corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("test-pod-%d", i+1),
+				Namespace: "default",
+				Labels: map[string]string{
+					"app": "nginx",
+				},
+			},
+			Status: corev1.PodStatus{
+				Phase: phase,
+			},
+		}
+	}
+	return pods
+}
+
+func TestInjectPacketLoss_Success(t *testing.T) {
+	// Disable color for testing
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	// Reset global config
+	originalConfig := config.GlobalConfig
+	defer func() {
+		config.GlobalConfig = originalConfig
+	}()
+
+	testCases := []struct {
+		name        string
+		podCount    int
+		podPhase    corev1.PodPhase
+		dryRun      bool
+		loss        string
+		duration    time.Duration
+		description string
+	}{
+		{
+			name:        "inject packet loss to running pods",
+			podCount:    3,
+			podPhase:    corev1.PodRunning,
+			dryRun:      false,
+			loss:        "30%",
+			duration:    30 * time.Second,
+			description: "Should inject packet loss to all running pods",
+		},
+		{
+			name:        "dry run mode",
+			podCount:    2,
+			podPhase:    corev1.PodRunning,
+			dryRun:      true,
+			loss:        "50%",
+			duration:    60 * time.Second,
+			description: "Should simulate packet loss injection without actually doing it",
+		},
+		{
+			name:        "single pod",
+			podCount:    1,
+			podPhase:    corev1.PodRunning,
+			dryRun:      false,
+			loss:        "25%",
+			duration:    10 * time.Second,
+			description: "Should handle single pod correctly",
+		},
+		{
+			name:        "custom loss percentage",
+			podCount:    2,
+			podPhase:    corev1.PodRunning,
+			dryRun:      false,
+			loss:        "75%",
+			duration:    45 * time.Second,
+			description: "Should handle custom loss values",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create pods
+			pods := createTestPodsForPacketLoss(tc.podCount, tc.podPhase)
+			
+			// Create fake client
+			fakeClient := fake.NewSimpleClientset()
+			
+			// Add pods to the fake client
+			for _, pod := range pods {
+				_, err := fakeClient.CoreV1().Pods("default").Create(context.TODO(), &pod, metav1.CreateOptions{})
+				if err != nil {
+					t.Fatalf("Failed to create pod in fake client: %v", err)
+				}
+			}
+
+			// Execute InjectPacketLoss
+			err := InjectPacketLoss(fakeClient, "default", "app=nginx", tc.loss, tc.duration, tc.dryRun)
+
+			// Check for errors
+			if err != nil {
+				t.Errorf("Unexpected error: %v - %s", err, tc.description)
+			}
+		})
+	}
+}
+
+func TestInjectPacketLoss_NoPodsFound(t *testing.T) {
+	// Disable color for testing
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	// Create fake client with no pods
+	fakeClient := fake.NewSimpleClientset()
+
+	// Execute InjectPacketLoss
+	err := InjectPacketLoss(fakeClient, "default", "app=nonexistent", "30%", 30*time.Second, false)
+
+	// Should not return an error, just log a warning
+	if err != nil {
+		t.Errorf("Unexpected error when no pods found: %v", err)
+	}
+}
+
+func TestInjectPacketLoss_NonRunningPods(t *testing.T) {
+	// Disable color for testing
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	testCases := []struct {
+		name     string
+		podPhase corev1.PodPhase
+	}{
+		{"pending pods", corev1.PodPending},
+		{"succeeded pods", corev1.PodSucceeded},
+		{"failed pods", corev1.PodFailed},
+		{"unknown pods", corev1.PodUnknown},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create pods with non-running phase
+			pods := createTestPodsForPacketLoss(2, tc.podPhase)
+			
+			// Create fake client
+			fakeClient := fake.NewSimpleClientset()
+			
+			// Add pods to the fake client
+			for _, pod := range pods {
+				_, err := fakeClient.CoreV1().Pods("default").Create(context.TODO(), &pod, metav1.CreateOptions{})
+				if err != nil {
+					t.Fatalf("Failed to create pod in fake client: %v", err)
+				}
+			}
+
+			// Execute InjectPacketLoss
+			err := InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
+
+			// Should not return an error, just skip non-running pods
+			if err != nil {
+				t.Errorf("Unexpected error with %s: %v", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestInjectPacketLoss_MixedPodPhases(t *testing.T) {
+	// Disable color for testing
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	// Create fake client
+	fakeClient := fake.NewSimpleClientset()
+
+	// Create pods with different phases
+	pods := []corev1.Pod{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "running-pod",
+				Namespace: "default",
+				Labels:    map[string]string{"app": "nginx"},
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pending-pod",
+				Namespace: "default",
+				Labels:    map[string]string{"app": "nginx"},
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodPending},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "failed-pod",
+				Namespace: "default",
+				Labels:    map[string]string{"app": "nginx"},
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodFailed},
+		},
+	}
+
+	// Add pods to the fake client
+	for _, pod := range pods {
+		_, err := fakeClient.CoreV1().Pods("default").Create(context.TODO(), &pod, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create pod in fake client: %v", err)
+		}
+	}
+
+	// Execute InjectPacketLoss
+	err := InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
+
+	// Should not return an error, should process running pods and skip others
+	if err != nil {
+		t.Errorf("Unexpected error with mixed pod phases: %v", err)
+	}
+}
+
+func TestInjectPacketLoss_DifferentNamespaces(t *testing.T) {
+	// Disable color for testing
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	// Create fake client
+	fakeClient := fake.NewSimpleClientset()
+
+	// Create pods in different namespaces
+	pod1 := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod-1",
+			Namespace: "default",
+			Labels:    map[string]string{"app": "nginx"},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+
+	pod2 := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "pod-2",
+			Namespace: "production",
+			Labels:    map[string]string{"app": "nginx"},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+
+	// Add pods to different namespaces
+	_, err := fakeClient.CoreV1().Pods("default").Create(context.TODO(), &pod1, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create pod in default namespace: %v", err)
+	}
+
+	_, err = fakeClient.CoreV1().Pods("production").Create(context.TODO(), &pod2, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Failed to create pod in production namespace: %v", err)
+	}
+
+	// Execute InjectPacketLoss on default namespace only
+	err = InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	// Verify only default namespace pod was processed
+	// (We can't easily verify ephemeral containers were added with fake client,
+	// but we can verify no errors occurred)
+}
+
+func TestInjectPacketLoss_EdgeCases(t *testing.T) {
+	// Disable color for testing
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	testCases := []struct {
+		name        string
+		loss        string
+		duration    time.Duration
+		expectError bool
+		description string
+	}{
+		{
+			name:        "zero duration",
+			loss:        "30%",
+			duration:    0,
+			expectError: false,
+			description: "Should handle zero duration",
+		},
+		{
+			name:        "very short duration",
+			loss:        "25%",
+			duration:    1 * time.Millisecond,
+			expectError: false,
+			description: "Should handle very short duration",
+		},
+		{
+			name:        "very long duration",
+			loss:        "50%",
+			duration:    24 * time.Hour,
+			expectError: false,
+			description: "Should handle very long duration",
+		},
+		{
+			name:        "empty loss",
+			loss:        "",
+			duration:    30 * time.Second,
+			expectError: false,
+			description: "Should handle empty loss string",
+		},
+		{
+			name:        "100% loss",
+			loss:        "100%",
+			duration:    30 * time.Second,
+			expectError: false,
+			description: "Should handle 100% packet loss",
+		},
+		{
+			name:        "0% loss",
+			loss:        "0%",
+			duration:    30 * time.Second,
+			expectError: false,
+			description: "Should handle 0% packet loss",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create pods
+			pods := createTestPodsForPacketLoss(1, corev1.PodRunning)
+			
+			// Create fake client
+			fakeClient := fake.NewSimpleClientset()
+			
+			// Add pods to the fake client
+			for _, pod := range pods {
+				_, err := fakeClient.CoreV1().Pods("default").Create(context.TODO(), &pod, metav1.CreateOptions{})
+				if err != nil {
+					t.Fatalf("Failed to create pod in fake client: %v", err)
+				}
+			}
+
+			err := InjectPacketLoss(fakeClient, "default", "app=nginx", tc.loss, tc.duration, false)
+
+			if tc.expectError && err == nil {
+				t.Errorf("Expected error for test case '%s': %s", tc.name, tc.description)
+			}
+			if !tc.expectError && err != nil {
+				t.Errorf("Unexpected error for test case '%s': %v - %s", tc.name, err, tc.description)
+			}
+		})
+	}
+}
+
+func TestInjectPacketLoss_LossPercentageValidation(t *testing.T) {
+	// Disable color for testing
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	testCases := []struct {
+		name        string
+		loss        string
+		expectError bool
+		description string
+	}{
+		{
+			name:        "valid percentage with %",
+			loss:        "30%",
+			expectError: false,
+			description: "Should accept valid percentage format",
+		},
+		{
+			name:        "valid percentage without %",
+			loss:        "30",
+			expectError: false,
+			description: "Should accept percentage without % symbol",
+		},
+		{
+			name:        "decimal percentage",
+			loss:        "25.5%",
+			expectError: false,
+			description: "Should accept decimal percentage",
+		},
+		{
+			name:        "zero percentage",
+			loss:        "0%",
+			expectError: false,
+			description: "Should accept zero percentage",
+		},
+		{
+			name:        "100% percentage",
+			loss:        "100%",
+			expectError: false,
+			description: "Should accept 100% percentage",
+		},
+		{
+			name:        "empty loss",
+			loss:        "",
+			expectError: false,
+			description: "Should handle empty loss string",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create pods
+			pods := createTestPodsForPacketLoss(1, corev1.PodRunning)
+			
+			// Create fake client
+			fakeClient := fake.NewSimpleClientset()
+			
+			// Add pods to the fake client
+			for _, pod := range pods {
+				_, err := fakeClient.CoreV1().Pods("default").Create(context.TODO(), &pod, metav1.CreateOptions{})
+				if err != nil {
+					t.Fatalf("Failed to create pod in fake client: %v", err)
+				}
+			}
+
+			err := InjectPacketLoss(fakeClient, "default", "app=nginx", tc.loss, 30*time.Second, false)
+
+			if tc.expectError && err == nil {
+				t.Errorf("Expected error for test case '%s': %s", tc.name, tc.description)
+			}
+			if !tc.expectError && err != nil {
+				t.Errorf("Unexpected error for test case '%s': %v - %s", tc.name, err, tc.description)
+			}
+		})
+	}
+}
+
+// Benchmark tests for packet loss injection
+func BenchmarkInjectPacketLoss(b *testing.B) {
+	// Disable color for benchmarking
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	// Create test pods
+	pods := createTestPodsForPacketLoss(100, corev1.PodRunning)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Create fresh fake client for each iteration
+		fakeClient := fake.NewSimpleClientset()
+		
+		// Add pods to the fake client
+		for _, pod := range pods {
+			_, err := fakeClient.CoreV1().Pods("default").Create(context.TODO(), &pod, metav1.CreateOptions{})
+			if err != nil {
+				b.Fatalf("Failed to create pod in fake client: %v", err)
+			}
+		}
+		
+		InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
+	}
+}
+
+func BenchmarkInjectPacketLoss_DryRun(b *testing.B) {
+	// Disable color for benchmarking
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	// Create test pods
+	pods := createTestPodsForPacketLoss(100, corev1.PodRunning)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Create fresh fake client for each iteration
+		fakeClient := fake.NewSimpleClientset()
+		
+		// Add pods to the fake client
+		for _, pod := range pods {
+			_, err := fakeClient.CoreV1().Pods("default").Create(context.TODO(), &pod, metav1.CreateOptions{})
+			if err != nil {
+				b.Fatalf("Failed to create pod in fake client: %v", err)
+			}
+		}
+		
+		InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, true)
+	}
+}
