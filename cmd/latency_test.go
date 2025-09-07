@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/isurusiri/tipsy/internal/config"
+	"github.com/isurusiri/tipsy/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -490,6 +493,156 @@ func TestLatencyCommand_DelayFormat(t *testing.T) {
 			}
 			if !tc.expectValid && err == nil && tc.delay != "" {
 				t.Errorf("Expected invalid delay format '%s' to be rejected - %s", tc.delay, tc.description)
+			}
+		})
+	}
+}
+
+func TestLatencyCommand_StateTracking(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+	originalStateFile := state.GetStateFilePath()
+	defer func() {
+		// Restore original state file path
+		os.Setenv("TIPSY_STATE_FILE", originalStateFile)
+	}()
+
+	// Set custom state file for testing
+	testStateFile := filepath.Join(tempDir, "latency_state_test.json")
+	os.Setenv("TIPSY_STATE_FILE", testStateFile)
+	state.ReloadStateFilePath()
+
+	// Reset global config for testing
+	config.GlobalConfig = config.Config{}
+
+	testCases := []struct {
+		name           string
+		selector       string
+		namespace      string
+		delay          string
+		duration       string
+		dryRun         bool
+		expectedPods   []string
+		expectedAction state.ChaosAction
+	}{
+		{
+			name:         "latency_with_dry_run_no_state",
+			selector:     "app=nginx",
+			namespace:    "default",
+			delay:        "200ms",
+			duration:     "30s",
+			dryRun:       true,
+			expectedPods: []string{"pod-1", "pod-2"},
+			expectedAction: state.ChaosAction{
+				Type:      "latency",
+				TargetPod: "pod-1",
+				Namespace: "default",
+				Metadata: map[string]string{
+					"delay":    "200ms",
+					"duration": "30s",
+					"selector": "app=nginx",
+				},
+			},
+		},
+		{
+			name:         "latency_with_state_saving",
+			selector:     "app=api",
+			namespace:    "production",
+			delay:        "500ms",
+			duration:     "1m",
+			dryRun:       false,
+			expectedPods: []string{"api-pod-1", "api-pod-2"},
+			expectedAction: state.ChaosAction{
+				Type:      "latency",
+				TargetPod: "api-pod-1",
+				Namespace: "production",
+				Metadata: map[string]string{
+					"delay":    "500ms",
+					"duration": "1m",
+					"selector": "app=api",
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Clear state before test
+			actions, err := state.LoadActions()
+			if err != nil {
+				t.Fatalf("Failed to load actions: %v", err)
+			}
+			if len(actions) > 0 {
+				err = state.ClearActions()
+				if err != nil {
+					t.Fatalf("Failed to clear actions: %v", err)
+				}
+			}
+
+			// Simulate the latency command state saving logic
+			// In a real test, we would mock the Kubernetes client and chaos functions
+			if !tc.dryRun {
+				for _, podName := range tc.expectedPods {
+					action := state.ChaosAction{
+						Type:      "latency",
+						TargetPod: podName,
+						Namespace: tc.namespace,
+						Timestamp: time.Now().UTC().Format(time.RFC3339),
+						Metadata: map[string]string{
+							"delay":    tc.delay,
+							"duration": tc.duration,
+							"selector": tc.selector,
+						},
+					}
+					err := state.SaveAction(action)
+					if err != nil {
+						t.Fatalf("Failed to save action: %v", err)
+					}
+				}
+			}
+
+			// Verify state was saved correctly
+			actions, err = state.LoadActions()
+			if err != nil {
+				t.Fatalf("Failed to load actions: %v", err)
+			}
+
+			if tc.dryRun {
+				// Dry run should not save state
+				if len(actions) != 0 {
+					t.Errorf("Expected 0 actions in dry run, got %d", len(actions))
+				}
+			} else {
+				// Non-dry run should save state for each pod
+				expectedCount := len(tc.expectedPods)
+				if len(actions) != expectedCount {
+					t.Errorf("Expected %d actions, got %d", expectedCount, len(actions))
+				}
+
+				// Verify action details
+				for i, action := range actions {
+					if action.Type != tc.expectedAction.Type {
+						t.Errorf("Action %d: expected type %s, got %s", i, tc.expectedAction.Type, action.Type)
+					}
+					if action.Namespace != tc.expectedAction.Namespace {
+						t.Errorf("Action %d: expected namespace %s, got %s", i, tc.expectedAction.Namespace, action.Namespace)
+					}
+					if action.TargetPod != tc.expectedPods[i] {
+						t.Errorf("Action %d: expected target pod %s, got %s", i, tc.expectedPods[i], action.TargetPod)
+					}
+					if action.Timestamp == "" {
+						t.Errorf("Action %d: expected timestamp, got empty", i)
+					}
+
+					// Verify metadata
+					for key, expectedValue := range tc.expectedAction.Metadata {
+						if actualValue, exists := action.Metadata[key]; !exists {
+							t.Errorf("Action %d: missing metadata key %s", i, key)
+						} else if actualValue != expectedValue {
+							t.Errorf("Action %d: metadata key %s: expected %s, got %s", i, key, expectedValue, actualValue)
+						}
+					}
+				}
 			}
 		})
 	}

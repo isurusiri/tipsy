@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/isurusiri/tipsy/internal/chaos"
 	"github.com/isurusiri/tipsy/internal/config"
 	"github.com/isurusiri/tipsy/internal/k8s"
+	"github.com/isurusiri/tipsy/internal/state"
 	"github.com/isurusiri/tipsy/internal/utils"
 	"github.com/spf13/cobra"
 )
@@ -79,6 +81,24 @@ Examples:
 		if err != nil {
 			utils.Error(fmt.Sprintf("Failed to misroute service: %v", err))
 			return
+		}
+
+		// Save state for the misroute operation
+		if !config.GlobalConfig.DryRun {
+			action := state.ChaosAction{
+				Type:      "misroute",
+				TargetPod: misrouteService, // Using service name as target
+				Namespace: targetNamespace,
+				Timestamp: time.Now().UTC().Format(time.RFC3339),
+				Metadata: map[string]string{
+					"service":                misrouteService,
+					"remove_all":            fmt.Sprintf("%t", misrouteRemoveAll),
+					"replace_with_selector": misrouteReplaceWithSelector,
+				},
+			}
+			if err := state.SaveAction(action); err != nil {
+				utils.Warn(fmt.Sprintf("Failed to save state for service '%s': %v", misrouteService, err))
+			}
 		}
 
 		utils.Info("Service misrouting operation completed successfully")

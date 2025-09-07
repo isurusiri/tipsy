@@ -15,7 +15,8 @@ import (
 )
 
 // InjectCPUStress injects CPU load into pods using ephemeral containers
-func InjectCPUStress(client kubernetes.Interface, namespace, selector, method string, duration time.Duration, dryRun bool) error {
+// Returns the list of pod names that were affected by the CPU stress injection
+func InjectCPUStress(client kubernetes.Interface, namespace, selector, method string, duration time.Duration, dryRun bool) ([]string, error) {
 	utils.Info(fmt.Sprintf("Searching for pods with selector '%s' in namespace '%s'", selector, namespace))
 
 	// List pods matching the selector
@@ -23,15 +24,17 @@ func InjectCPUStress(client kubernetes.Interface, namespace, selector, method st
 		LabelSelector: selector,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
+		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
 	if len(pods.Items) == 0 {
 		utils.Warn(fmt.Sprintf("No pods found matching selector '%s' in namespace '%s'", selector, namespace))
-		return nil
+		return []string{}, nil
 	}
 
 	utils.Info(fmt.Sprintf("Found %d pod(s) matching selector", len(pods.Items)))
+
+	var affectedPods []string
 
 	// Process each pod
 	for _, pod := range pods.Items {
@@ -44,10 +47,13 @@ func InjectCPUStress(client kubernetes.Interface, namespace, selector, method st
 		if err != nil {
 			utils.Error(fmt.Sprintf("Failed to inject CPU stress to pod '%s': %v", pod.Name, err))
 			// Continue with other pods even if one fails
+		} else {
+			// Only add to affected pods if the injection was successful
+			affectedPods = append(affectedPods, pod.Name)
 		}
 	}
 
-	return nil
+	return affectedPods, nil
 }
 
 // injectCPUStressToPod injects CPU stress to a specific pod using an ephemeral container

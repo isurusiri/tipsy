@@ -129,7 +129,7 @@ func TestInjectCPUStress_Success(t *testing.T) {
 			}
 
 			// Execute InjectCPUStress
-			err := InjectCPUStress(fakeClient, "default", "app=nginx", tc.method, tc.duration, tc.dryRun)
+			_, err := InjectCPUStress(fakeClient, "default", "app=nginx", tc.method, tc.duration, tc.dryRun)
 
 			// Check for errors
 			if err != nil {
@@ -151,7 +151,7 @@ func TestInjectCPUStress_NoPodsFound(t *testing.T) {
 	fakeClient := fake.NewSimpleClientset()
 
 	// Execute InjectCPUStress
-	err := InjectCPUStress(fakeClient, "default", "app=nonexistent", "stress-ng", 30*time.Second, false)
+	_, err := InjectCPUStress(fakeClient, "default", "app=nonexistent", "stress-ng", 30*time.Second, false)
 
 	// Should not return an error, just log a warning
 	if err != nil {
@@ -194,7 +194,7 @@ func TestInjectCPUStress_NonRunningPods(t *testing.T) {
 			}
 
 			// Execute InjectCPUStress
-			err := InjectCPUStress(fakeClient, "default", "app=nginx", "stress-ng", 30*time.Second, false)
+			_, err := InjectCPUStress(fakeClient, "default", "app=nginx", "stress-ng", 30*time.Second, false)
 
 			// Should not return an error, just skip non-running pods
 			if err != nil {
@@ -252,7 +252,7 @@ func TestInjectCPUStress_MixedPodPhases(t *testing.T) {
 	}
 
 	// Execute InjectCPUStress
-	err := InjectCPUStress(fakeClient, "default", "app=nginx", "stress-ng", 30*time.Second, false)
+	_, err := InjectCPUStress(fakeClient, "default", "app=nginx", "stress-ng", 30*time.Second, false)
 
 	// Should not return an error, should process running pods and skip others
 	if err != nil {
@@ -302,7 +302,7 @@ func TestInjectCPUStress_DifferentNamespaces(t *testing.T) {
 	}
 
 	// Execute InjectCPUStress on default namespace only
-	err = InjectCPUStress(fakeClient, "default", "app=nginx", "stress-ng", 30*time.Second, false)
+	_, err = InjectCPUStress(fakeClient, "default", "app=nginx", "stress-ng", 30*time.Second, false)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestInjectCPUStress_EdgeCases(t *testing.T) {
 				}
 			}
 
-			err := InjectCPUStress(fakeClient, "default", "app=nginx", tc.method, tc.duration, false)
+			_, err := InjectCPUStress(fakeClient, "default", "app=nginx", tc.method, tc.duration, false)
 
 			if tc.expectError && err == nil {
 				t.Errorf("Expected error for test case '%s': %s", tc.name, tc.description)
@@ -614,7 +614,7 @@ func BenchmarkInjectCPUStress_StressNG(b *testing.B) {
 			}
 		}
 		
-		InjectCPUStress(fakeClient, "default", "app=nginx", "stress-ng", 30*time.Second, false)
+		_, _ = InjectCPUStress(fakeClient, "default", "app=nginx", "stress-ng", 30*time.Second, false)
 	}
 }
 
@@ -642,7 +642,7 @@ func BenchmarkInjectCPUStress_Yes(b *testing.B) {
 			}
 		}
 		
-		InjectCPUStress(fakeClient, "default", "app=nginx", "yes", 30*time.Second, false)
+		_, _ = InjectCPUStress(fakeClient, "default", "app=nginx", "yes", 30*time.Second, false)
 	}
 }
 
@@ -670,6 +670,6 @@ func BenchmarkInjectCPUStress_DryRun(b *testing.B) {
 			}
 		}
 		
-		InjectCPUStress(fakeClient, "default", "app=nginx", "stress-ng", 30*time.Second, true)
+		_, _ = InjectCPUStress(fakeClient, "default", "app=nginx", "stress-ng", 30*time.Second, true)
 	}
 }

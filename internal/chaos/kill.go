@@ -12,7 +12,8 @@ import (
 )
 
 // KillPods deletes pods based on a label selector
-func KillPods(client kubernetes.Interface, namespace, selector string, count int, dryRun bool) error {
+// Returns the list of pod names that were killed
+func KillPods(client kubernetes.Interface, namespace, selector string, count int, dryRun bool) ([]string, error) {
 	utils.Info(fmt.Sprintf("Searching for pods with selector '%s' in namespace '%s'", selector, namespace))
 
 	// List pods matching the selector
@@ -20,12 +21,12 @@ func KillPods(client kubernetes.Interface, namespace, selector string, count int
 		LabelSelector: selector,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
+		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
 	if len(pods.Items) == 0 {
 		utils.Warn(fmt.Sprintf("No pods found matching selector '%s' in namespace '%s'", selector, namespace))
-		return nil
+		return []string{}, nil
 	}
 
 	utils.Info(fmt.Sprintf("Found %d pod(s) matching selector", len(pods.Items)))
@@ -53,12 +54,16 @@ func KillPods(client kubernetes.Interface, namespace, selector string, count int
 		}
 	}
 
+	var killedPods []string
+
 	// Execute the kill operation
 	if dryRun {
 		utils.DryRun(fmt.Sprintf("Would delete %d pod(s):", len(selectedPods)))
 		for _, podName := range selectedPods {
 			utils.DryRun(fmt.Sprintf("  - %s", podName))
 		}
+		// In dry run, return the selected pods as if they were killed
+		killedPods = selectedPods
 	} else {
 		utils.Info(fmt.Sprintf("Deleting %d pod(s):", len(selectedPods)))
 		for _, podName := range selectedPods {
@@ -70,9 +75,10 @@ func KillPods(client kubernetes.Interface, namespace, selector string, count int
 				// Continue with other pods even if one fails
 			} else {
 				utils.Info(fmt.Sprintf("  Successfully deleted pod: %s", podName))
+				killedPods = append(killedPods, podName)
 			}
 		}
 	}
 
-	return nil
+	return killedPods, nil
 }

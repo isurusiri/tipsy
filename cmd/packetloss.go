@@ -7,6 +7,7 @@ import (
 	"github.com/isurusiri/tipsy/internal/chaos"
 	"github.com/isurusiri/tipsy/internal/config"
 	"github.com/isurusiri/tipsy/internal/k8s"
+	"github.com/isurusiri/tipsy/internal/state"
 	"github.com/isurusiri/tipsy/internal/utils"
 	"github.com/spf13/cobra"
 )
@@ -68,10 +69,30 @@ Examples:
 		}
 
 		// Execute the packet loss injection
-		err = chaos.InjectPacketLoss(client, targetNamespace, packetLossSelector, loss, durationParsed, config.GlobalConfig.DryRun)
+		affectedPods, err := chaos.InjectPacketLoss(client, targetNamespace, packetLossSelector, loss, durationParsed, config.GlobalConfig.DryRun)
 		if err != nil {
 			utils.Error(fmt.Sprintf("Failed to inject packet loss: %v", err))
 			return
+		}
+
+		// Save state for each affected pod
+		if !config.GlobalConfig.DryRun {
+			for _, podName := range affectedPods {
+				action := state.ChaosAction{
+					Type:      "packetloss",
+					TargetPod: podName,
+					Namespace: targetNamespace,
+					Timestamp: time.Now().UTC().Format(time.RFC3339),
+					Metadata: map[string]string{
+						"loss":     loss,
+						"duration": packetLossDuration,
+						"selector": packetLossSelector,
+					},
+				}
+				if err := state.SaveAction(action); err != nil {
+					utils.Warn(fmt.Sprintf("Failed to save state for pod '%s': %v", podName, err))
+				}
+			}
 		}
 
 		utils.Info("Packet loss injection operation completed successfully")

@@ -121,7 +121,7 @@ func TestKillPods_Success(t *testing.T) {
 			}
 
 			// Execute KillPods
-			err := KillPods(fakeClient, "default", "app=nginx", tc.killCount, tc.dryRun)
+			_, err := KillPods(fakeClient, "default", "app=nginx", tc.killCount, tc.dryRun)
 
 			// Check for errors
 			if err != nil {
@@ -153,7 +153,7 @@ func TestKillPods_NoPodsFound(t *testing.T) {
 	fakeClient := fake.NewSimpleClientset()
 
 	// Execute KillPods
-	err := KillPods(fakeClient, "default", "app=nonexistent", 1, false)
+	_, err := KillPods(fakeClient, "default", "app=nonexistent", 1, false)
 
 	// Should not return an error, just log a warning
 	if err != nil {
@@ -199,7 +199,7 @@ func TestKillPods_RandomSelection(t *testing.T) {
 		}
 
 		// Execute KillPods
-		err := KillPods(fakeClient, "default", "app=nginx", 2, false)
+		_, err := KillPods(fakeClient, "default", "app=nginx", 2, false)
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
@@ -283,7 +283,7 @@ func TestKillPods_EdgeCases(t *testing.T) {
 				}
 			}
 
-			err := KillPods(fakeClient, "default", "app=nginx", tc.killCount, false)
+			_, err := KillPods(fakeClient, "default", "app=nginx", tc.killCount, false)
 
 			if tc.expectError && err == nil {
 				t.Errorf("Expected error for test case '%s': %s", tc.name, tc.description)
@@ -337,7 +337,7 @@ func TestKillPods_DifferentNamespaces(t *testing.T) {
 	}
 
 	// Execute KillPods on default namespace only
-	err = KillPods(fakeClient, "default", "app=nginx", 1, false)
+	_, err = KillPods(fakeClient, "default", "app=nginx", 1, false)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -387,7 +387,7 @@ func BenchmarkKillPods(b *testing.B) {
 			}
 		}
 		
-		KillPods(fakeClient, "default", "app=nginx", 10, false)
+		_, _ = KillPods(fakeClient, "default", "app=nginx", 10, false)
 	}
 }
 
@@ -415,6 +415,6 @@ func BenchmarkKillPods_DryRun(b *testing.B) {
 			}
 		}
 		
-		KillPods(fakeClient, "default", "app=nginx", 10, true)
+		_, _ = KillPods(fakeClient, "default", "app=nginx", 10, true)
 	}
 }

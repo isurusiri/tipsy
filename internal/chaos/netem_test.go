@@ -111,7 +111,7 @@ func TestInjectLatency_Success(t *testing.T) {
 			}
 
 			// Execute InjectLatency
-			err := InjectLatency(fakeClient, "default", "app=nginx", tc.delay, tc.duration, tc.dryRun)
+			_, err := InjectLatency(fakeClient, "default", "app=nginx", tc.delay, tc.duration, tc.dryRun)
 
 			// Check for errors
 			if err != nil {
@@ -133,7 +133,7 @@ func TestInjectLatency_NoPodsFound(t *testing.T) {
 	fakeClient := fake.NewSimpleClientset()
 
 	// Execute InjectLatency
-	err := InjectLatency(fakeClient, "default", "app=nonexistent", "200ms", 30*time.Second, false)
+	_, err := InjectLatency(fakeClient, "default", "app=nonexistent", "200ms", 30*time.Second, false)
 
 	// Should not return an error, just log a warning
 	if err != nil {
@@ -176,7 +176,7 @@ func TestInjectLatency_NonRunningPods(t *testing.T) {
 			}
 
 			// Execute InjectLatency
-			err := InjectLatency(fakeClient, "default", "app=nginx", "200ms", 30*time.Second, false)
+			_, err := InjectLatency(fakeClient, "default", "app=nginx", "200ms", 30*time.Second, false)
 
 			// Should not return an error, just skip non-running pods
 			if err != nil {
@@ -234,7 +234,7 @@ func TestInjectLatency_MixedPodPhases(t *testing.T) {
 	}
 
 	// Execute InjectLatency
-	err := InjectLatency(fakeClient, "default", "app=nginx", "200ms", 30*time.Second, false)
+	_, err := InjectLatency(fakeClient, "default", "app=nginx", "200ms", 30*time.Second, false)
 
 	// Should not return an error, should process running pods and skip others
 	if err != nil {
@@ -284,7 +284,7 @@ func TestInjectLatency_DifferentNamespaces(t *testing.T) {
 	}
 
 	// Execute InjectLatency on default namespace only
-	err = InjectLatency(fakeClient, "default", "app=nginx", "200ms", 30*time.Second, false)
+	_, err = InjectLatency(fakeClient, "default", "app=nginx", "200ms", 30*time.Second, false)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -355,7 +355,7 @@ func TestInjectLatency_EdgeCases(t *testing.T) {
 				}
 			}
 
-			err := InjectLatency(fakeClient, "default", "app=nginx", tc.delay, tc.duration, false)
+			_, err := InjectLatency(fakeClient, "default", "app=nginx", tc.delay, tc.duration, false)
 
 			if tc.expectError && err == nil {
 				t.Errorf("Expected error for test case '%s': %s", tc.name, tc.description)
@@ -430,7 +430,7 @@ func BenchmarkInjectLatency(b *testing.B) {
 			}
 		}
 		
-		InjectLatency(fakeClient, "default", "app=nginx", "200ms", 30*time.Second, false)
+		_, _ = InjectLatency(fakeClient, "default", "app=nginx", "200ms", 30*time.Second, false)
 	}
 }
 
@@ -458,7 +458,7 @@ func BenchmarkInjectLatency_DryRun(b *testing.B) {
 			}
 		}
 		
-		InjectLatency(fakeClient, "default", "app=nginx", "200ms", 30*time.Second, true)
+		_, _ = InjectLatency(fakeClient, "default", "app=nginx", "200ms", 30*time.Second, true)
 	}
 }
 
@@ -560,7 +560,7 @@ func TestInjectPacketLoss_Success(t *testing.T) {
 			}
 
 			// Execute InjectPacketLoss
-			err := InjectPacketLoss(fakeClient, "default", "app=nginx", tc.loss, tc.duration, tc.dryRun)
+			_, err := InjectPacketLoss(fakeClient, "default", "app=nginx", tc.loss, tc.duration, tc.dryRun)
 
 			// Check for errors
 			if err != nil {
@@ -582,7 +582,7 @@ func TestInjectPacketLoss_NoPodsFound(t *testing.T) {
 	fakeClient := fake.NewSimpleClientset()
 
 	// Execute InjectPacketLoss
-	err := InjectPacketLoss(fakeClient, "default", "app=nonexistent", "30%", 30*time.Second, false)
+	_, err := InjectPacketLoss(fakeClient, "default", "app=nonexistent", "30%", 30*time.Second, false)
 
 	// Should not return an error, just log a warning
 	if err != nil {
@@ -625,7 +625,7 @@ func TestInjectPacketLoss_NonRunningPods(t *testing.T) {
 			}
 
 			// Execute InjectPacketLoss
-			err := InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
+			_, err := InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
 
 			// Should not return an error, just skip non-running pods
 			if err != nil {
@@ -683,7 +683,7 @@ func TestInjectPacketLoss_MixedPodPhases(t *testing.T) {
 	}
 
 	// Execute InjectPacketLoss
-	err := InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
+	_, err := InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
 
 	// Should not return an error, should process running pods and skip others
 	if err != nil {
@@ -733,7 +733,7 @@ func TestInjectPacketLoss_DifferentNamespaces(t *testing.T) {
 	}
 
 	// Execute InjectPacketLoss on default namespace only
-	err = InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
+	_, err = InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
@@ -818,7 +818,7 @@ func TestInjectPacketLoss_EdgeCases(t *testing.T) {
 				}
 			}
 
-			err := InjectPacketLoss(fakeClient, "default", "app=nginx", tc.loss, tc.duration, false)
+			_, err := InjectPacketLoss(fakeClient, "default", "app=nginx", tc.loss, tc.duration, false)
 
 			if tc.expectError && err == nil {
 				t.Errorf("Expected error for test case '%s': %s", tc.name, tc.description)
@@ -898,7 +898,7 @@ func TestInjectPacketLoss_LossPercentageValidation(t *testing.T) {
 				}
 			}
 
-			err := InjectPacketLoss(fakeClient, "default", "app=nginx", tc.loss, 30*time.Second, false)
+			_, err := InjectPacketLoss(fakeClient, "default", "app=nginx", tc.loss, 30*time.Second, false)
 
 			if tc.expectError && err == nil {
 				t.Errorf("Expected error for test case '%s': %s", tc.name, tc.description)
@@ -935,7 +935,7 @@ func BenchmarkInjectPacketLoss(b *testing.B) {
 			}
 		}
 		
-		InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
+		_, _ = InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, false)
 	}
 }
 
@@ -963,6 +963,6 @@ func BenchmarkInjectPacketLoss_DryRun(b *testing.B) {
 			}
 		}
 		
-		InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, true)
+		_, _ = InjectPacketLoss(fakeClient, "default", "app=nginx", "30%", 30*time.Second, true)
 	}
 }

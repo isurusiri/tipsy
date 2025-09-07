@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/isurusiri/tipsy/internal/chaos"
 	"github.com/isurusiri/tipsy/internal/config"
 	"github.com/isurusiri/tipsy/internal/k8s"
+	"github.com/isurusiri/tipsy/internal/state"
 	"github.com/isurusiri/tipsy/internal/utils"
 	"github.com/spf13/cobra"
 )
@@ -59,10 +61,29 @@ Examples:
 		}
 
 		// Execute the kill operation
-		err = chaos.KillPods(client, targetNamespace, selector, count, config.GlobalConfig.DryRun)
+		killedPods, err := chaos.KillPods(client, targetNamespace, selector, count, config.GlobalConfig.DryRun)
 		if err != nil {
 			utils.Error(fmt.Sprintf("Failed to kill pods: %v", err))
 			return
+		}
+
+		// Save state for each killed pod
+		if !config.GlobalConfig.DryRun {
+			for _, podName := range killedPods {
+				action := state.ChaosAction{
+					Type:      "kill",
+					TargetPod: podName,
+					Namespace: targetNamespace,
+					Timestamp: time.Now().UTC().Format(time.RFC3339),
+					Metadata: map[string]string{
+						"selector": selector,
+						"count":    fmt.Sprintf("%d", count),
+					},
+				}
+				if err := state.SaveAction(action); err != nil {
+					utils.Warn(fmt.Sprintf("Failed to save state for pod '%s': %v", podName, err))
+				}
+			}
 		}
 
 		utils.Info("Kill operation completed successfully")

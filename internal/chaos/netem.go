@@ -14,7 +14,8 @@ import (
 )
 
 // InjectLatency injects network latency using tc netem via ephemeral containers
-func InjectLatency(client kubernetes.Interface, namespace, selector, delay string, duration time.Duration, dryRun bool) error {
+// Returns the list of pod names that were affected by the latency injection
+func InjectLatency(client kubernetes.Interface, namespace, selector, delay string, duration time.Duration, dryRun bool) ([]string, error) {
 	utils.Info(fmt.Sprintf("Searching for pods with selector '%s' in namespace '%s'", selector, namespace))
 
 	// List pods matching the selector
@@ -22,15 +23,17 @@ func InjectLatency(client kubernetes.Interface, namespace, selector, delay strin
 		LabelSelector: selector,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
+		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
 	if len(pods.Items) == 0 {
 		utils.Warn(fmt.Sprintf("No pods found matching selector '%s' in namespace '%s'", selector, namespace))
-		return nil
+		return []string{}, nil
 	}
 
 	utils.Info(fmt.Sprintf("Found %d pod(s) matching selector", len(pods.Items)))
+
+	var affectedPods []string
 
 	// Process each pod
 	for _, pod := range pods.Items {
@@ -43,10 +46,13 @@ func InjectLatency(client kubernetes.Interface, namespace, selector, delay strin
 		if err != nil {
 			utils.Error(fmt.Sprintf("Failed to inject latency to pod '%s': %v", pod.Name, err))
 			// Continue with other pods even if one fails
+		} else {
+			// Only add to affected pods if the injection was successful
+			affectedPods = append(affectedPods, pod.Name)
 		}
 	}
 
-	return nil
+	return affectedPods, nil
 }
 
 // injectLatencyToPod injects latency to a specific pod using an ephemeral container
@@ -130,7 +136,8 @@ func getMainProcessName() string {
 }
 
 // InjectPacketLoss injects network packet loss using tc netem via ephemeral containers
-func InjectPacketLoss(client kubernetes.Interface, namespace, selector, loss string, duration time.Duration, dryRun bool) error {
+// Returns the list of pod names that were affected by the packet loss injection
+func InjectPacketLoss(client kubernetes.Interface, namespace, selector, loss string, duration time.Duration, dryRun bool) ([]string, error) {
 	utils.Info(fmt.Sprintf("Searching for pods with selector '%s' in namespace '%s'", selector, namespace))
 
 	// List pods matching the selector
@@ -138,15 +145,17 @@ func InjectPacketLoss(client kubernetes.Interface, namespace, selector, loss str
 		LabelSelector: selector,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list pods: %w", err)
+		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
 	if len(pods.Items) == 0 {
 		utils.Warn(fmt.Sprintf("No pods found matching selector '%s' in namespace '%s'", selector, namespace))
-		return nil
+		return []string{}, nil
 	}
 
 	utils.Info(fmt.Sprintf("Found %d pod(s) matching selector", len(pods.Items)))
+
+	var affectedPods []string
 
 	// Process each pod
 	for _, pod := range pods.Items {
@@ -159,10 +168,13 @@ func InjectPacketLoss(client kubernetes.Interface, namespace, selector, loss str
 		if err != nil {
 			utils.Error(fmt.Sprintf("Failed to inject packet loss to pod '%s': %v", pod.Name, err))
 			// Continue with other pods even if one fails
+		} else {
+			// Only add to affected pods if the injection was successful
+			affectedPods = append(affectedPods, pod.Name)
 		}
 	}
 
-	return nil
+	return affectedPods, nil
 }
 
 // injectPacketLossToPod injects packet loss to a specific pod using an ephemeral container
