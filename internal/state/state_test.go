@@ -424,3 +424,309 @@ func containsInMiddle(s, substr string) bool {
 	}
 	return false
 }
+
+func TestDeleteAction(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+	originalStateFile := stateFile
+	defer func() {
+		stateFile = originalStateFile
+	}()
+
+	// Set state file to temp directory
+	stateFile = filepath.Join(tempDir, "delete_test_state.json")
+
+	// Create test actions
+	action1 := ChaosAction{
+		Type:      "latency",
+		TargetPod: "pod-1",
+		Namespace: "default",
+		Timestamp: "2023-01-01T00:00:00Z",
+		Metadata:  map[string]string{"delay": "200ms"},
+	}
+
+	action2 := ChaosAction{
+		Type:      "cpustress",
+		TargetPod: "pod-2",
+		Namespace: "default",
+		Timestamp: "2023-01-01T00:01:00Z",
+		Metadata:  map[string]string{"method": "stress-ng"},
+	}
+
+	action3 := ChaosAction{
+		Type:      "misroute",
+		TargetPod: "service-1",
+		Namespace: "production",
+		Timestamp: "2023-01-01T00:02:00Z",
+		Metadata:  map[string]string{"service": "my-service"},
+	}
+
+	// Save all actions
+	err := SaveAction(action1)
+	if err != nil {
+		t.Fatalf("Failed to save action1: %v", err)
+	}
+
+	err = SaveAction(action2)
+	if err != nil {
+		t.Fatalf("Failed to save action2: %v", err)
+	}
+
+	err = SaveAction(action3)
+	if err != nil {
+		t.Fatalf("Failed to save action3: %v", err)
+	}
+
+	// Verify all actions are saved
+	actions, err := LoadActions()
+	if err != nil {
+		t.Fatalf("Failed to load actions: %v", err)
+	}
+	if len(actions) != 3 {
+		t.Fatalf("Expected 3 actions, got %d", len(actions))
+	}
+
+	// Test deleting action2 (middle action)
+	err = DeleteAction(action2)
+	if err != nil {
+		t.Fatalf("Failed to delete action2: %v", err)
+	}
+
+	// Verify action2 was deleted
+	actions, err = LoadActions()
+	if err != nil {
+		t.Fatalf("Failed to load actions after delete: %v", err)
+	}
+	if len(actions) != 2 {
+		t.Fatalf("Expected 2 actions after delete, got %d", len(actions))
+	}
+
+	// Verify the remaining actions are correct
+	remainingTypes := make([]string, len(actions))
+	remainingPods := make([]string, len(actions))
+	for i, action := range actions {
+		remainingTypes[i] = action.Type
+		remainingPods[i] = action.TargetPod
+	}
+
+	expectedTypes := []string{"latency", "misroute"}
+	expectedPods := []string{"pod-1", "service-1"}
+
+	if !slicesEqual(remainingTypes, expectedTypes) {
+		t.Errorf("Expected types %v, got %v", expectedTypes, remainingTypes)
+	}
+	if !slicesEqual(remainingPods, expectedPods) {
+		t.Errorf("Expected pods %v, got %v", expectedPods, remainingPods)
+	}
+
+	// Test deleting action1 (first action)
+	err = DeleteAction(action1)
+	if err != nil {
+		t.Fatalf("Failed to delete action1: %v", err)
+	}
+
+	// Verify action1 was deleted
+	actions, err = LoadActions()
+	if err != nil {
+		t.Fatalf("Failed to load actions after second delete: %v", err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("Expected 1 action after second delete, got %d", len(actions))
+	}
+
+	if actions[0].Type != "misroute" || actions[0].TargetPod != "service-1" {
+		t.Errorf("Expected remaining action to be misroute/service-1, got %s/%s", actions[0].Type, actions[0].TargetPod)
+	}
+
+	// Test deleting action3 (last action)
+	err = DeleteAction(action3)
+	if err != nil {
+		t.Fatalf("Failed to delete action3: %v", err)
+	}
+
+	// Verify action3 was deleted
+	actions, err = LoadActions()
+	if err != nil {
+		t.Fatalf("Failed to load actions after third delete: %v", err)
+	}
+	if len(actions) != 0 {
+		t.Fatalf("Expected 0 actions after third delete, got %d", len(actions))
+	}
+}
+
+func TestDeleteActionNotFound(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+	originalStateFile := stateFile
+	defer func() {
+		stateFile = originalStateFile
+	}()
+
+	// Set state file to temp directory
+	stateFile = filepath.Join(tempDir, "delete_not_found_test_state.json")
+
+	// Create a non-existent action
+	nonExistentAction := ChaosAction{
+		Type:      "latency",
+		TargetPod: "non-existent-pod",
+		Namespace: "default",
+		Timestamp: "2023-01-01T00:00:00Z",
+		Metadata:  map[string]string{"delay": "200ms"},
+	}
+
+	// Try to delete non-existent action
+	err := DeleteAction(nonExistentAction)
+	if err == nil {
+		t.Fatalf("Expected error when deleting non-existent action, got nil")
+	}
+
+	// Verify error message contains "not found"
+	if !contains(err.Error(), "not found") {
+		t.Errorf("Expected error message to contain 'not found', got: %v", err)
+	}
+}
+
+func TestDeleteActionWithExactMatch(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+	originalStateFile := stateFile
+	defer func() {
+		stateFile = originalStateFile
+	}()
+
+	// Set state file to temp directory
+	stateFile = filepath.Join(tempDir, "delete_exact_match_test_state.json")
+
+	// Create two actions with same type and pod but different timestamps
+	action1 := ChaosAction{
+		Type:      "latency",
+		TargetPod: "pod-1",
+		Namespace: "default",
+		Timestamp: "2023-01-01T00:00:00Z",
+		Metadata:  map[string]string{"delay": "200ms"},
+	}
+
+	action2 := ChaosAction{
+		Type:      "latency",
+		TargetPod: "pod-1",
+		Namespace: "default",
+		Timestamp: "2023-01-01T00:01:00Z",
+		Metadata:  map[string]string{"delay": "300ms"},
+	}
+
+	// Save both actions
+	err := SaveAction(action1)
+	if err != nil {
+		t.Fatalf("Failed to save action1: %v", err)
+	}
+
+	err = SaveAction(action2)
+	if err != nil {
+		t.Fatalf("Failed to save action2: %v", err)
+	}
+
+	// Verify both actions are saved
+	actions, err := LoadActions()
+	if err != nil {
+		t.Fatalf("Failed to load actions: %v", err)
+	}
+	if len(actions) != 2 {
+		t.Fatalf("Expected 2 actions, got %d", len(actions))
+	}
+
+	// Delete action1 (should only delete the exact match)
+	err = DeleteAction(action1)
+	if err != nil {
+		t.Fatalf("Failed to delete action1: %v", err)
+	}
+
+	// Verify only action1 was deleted
+	actions, err = LoadActions()
+	if err != nil {
+		t.Fatalf("Failed to load actions after delete: %v", err)
+	}
+	if len(actions) != 1 {
+		t.Fatalf("Expected 1 action after delete, got %d", len(actions))
+	}
+
+	// Verify the remaining action is action2
+	if actions[0].Timestamp != action2.Timestamp {
+		t.Errorf("Expected remaining action to have timestamp %s, got %s", action2.Timestamp, actions[0].Timestamp)
+	}
+}
+
+func TestDeleteActionConcurrent(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+	originalStateFile := stateFile
+	defer func() {
+		stateFile = originalStateFile
+	}()
+
+	// Set state file to temp directory
+	stateFile = filepath.Join(tempDir, "delete_concurrent_test_state.json")
+
+	// Create multiple actions
+	numActions := 10
+	actions := make([]ChaosAction, numActions)
+	for i := 0; i < numActions; i++ {
+		actions[i] = ChaosAction{
+			Type:      "latency",
+			TargetPod: fmt.Sprintf("pod-%d", i),
+			Namespace: "default",
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			Metadata:  map[string]string{"index": fmt.Sprintf("%d", i)},
+		}
+		err := SaveAction(actions[i])
+		if err != nil {
+			t.Fatalf("Failed to save action %d: %v", i, err)
+		}
+	}
+
+	// Verify all actions are saved
+	loadedActions, err := LoadActions()
+	if err != nil {
+		t.Fatalf("Failed to load actions: %v", err)
+	}
+	if len(loadedActions) != numActions {
+		t.Fatalf("Expected %d actions, got %d", numActions, len(loadedActions))
+	}
+
+	// Concurrently delete half of the actions
+	var wg sync.WaitGroup
+	half := numActions / 2
+	for i := 0; i < half; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			err := DeleteAction(actions[index])
+			if err != nil {
+				t.Errorf("Failed to delete action %d: %v", index, err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Verify half of the actions were deleted
+	loadedActions, err = LoadActions()
+	if err != nil {
+		t.Fatalf("Failed to load actions after concurrent delete: %v", err)
+	}
+	if len(loadedActions) != half {
+		t.Fatalf("Expected %d actions after concurrent delete, got %d", half, len(loadedActions))
+	}
+}
+
+// Helper function to check if two string slices are equal
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

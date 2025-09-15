@@ -77,7 +77,7 @@ Examples:
 		}
 
 		// Execute the misroute operation
-		err = chaos.MisrouteService(client, misrouteService, targetNamespace, misrouteReplaceWithSelector, misrouteRemoveAll, config.GlobalConfig.DryRun)
+		backupPath, err := chaos.MisrouteService(client, misrouteService, targetNamespace, misrouteReplaceWithSelector, misrouteRemoveAll, config.GlobalConfig.DryRun)
 		if err != nil {
 			utils.Error(fmt.Sprintf("Failed to misroute service: %v", err))
 			return
@@ -94,6 +94,7 @@ Examples:
 					"service":                misrouteService,
 					"remove_all":            fmt.Sprintf("%t", misrouteRemoveAll),
 					"replace_with_selector": misrouteReplaceWithSelector,
+					"backupPath":            backupPath,
 				},
 			}
 			if err := state.SaveAction(action); err != nil {

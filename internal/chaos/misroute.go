@@ -14,13 +14,13 @@ import (
 )
 
 // MisrouteService manipulates service endpoints to simulate misrouting
-func MisrouteService(client *kubernetes.Clientset, svcName, namespace, replaceSelector string, removeAll, dryRun bool) error {
+func MisrouteService(client *kubernetes.Clientset, svcName, namespace, replaceSelector string, removeAll, dryRun bool) (string, error) {
 	utils.Info(fmt.Sprintf("Starting misroute operation for service '%s' in namespace '%s'", svcName, namespace))
 
 	// Fetch the Service
 	service, err := client.CoreV1().Services(namespace).Get(context.TODO(), svcName, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to get service '%s': %w", svcName, err)
+		return "", fmt.Errorf("failed to get service '%s': %w", svcName, err)
 	}
 
 	utils.Info(fmt.Sprintf("Found service '%s' with %d ports", svcName, len(service.Spec.Ports)))
@@ -28,12 +28,13 @@ func MisrouteService(client *kubernetes.Clientset, svcName, namespace, replaceSe
 	// Fetch the current Endpoints
 	endpoints, err := client.CoreV1().Endpoints(namespace).Get(context.TODO(), svcName, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to get endpoints for service '%s': %w", svcName, err)
+		return "", fmt.Errorf("failed to get endpoints for service '%s': %w", svcName, err)
 	}
 
 	// Save original endpoints for rollback
+	var backupPath string
 	if !dryRun {
-		err = saveOriginalEndpoints(endpoints, svcName, namespace)
+		backupPath, err = saveOriginalEndpoints(endpoints, svcName, namespace)
 		if err != nil {
 			utils.Warn(fmt.Sprintf("Failed to save original endpoints for rollback: %v", err))
 		}
@@ -55,7 +56,7 @@ func MisrouteService(client *kubernetes.Clientset, svcName, namespace, replaceSe
 			LabelSelector: replaceSelector,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to list pods with selector '%s': %w", replaceSelector, err)
+			return "", fmt.Errorf("failed to list pods with selector '%s': %w", replaceSelector, err)
 		}
 
 		if len(pods.Items) == 0 {
@@ -68,7 +69,7 @@ func MisrouteService(client *kubernetes.Clientset, svcName, namespace, replaceSe
 			// Build new endpoint subsets from the pods
 			newSubsets, err := buildEndpointSubsetsFromPods(pods.Items, service.Spec.Ports)
 			if err != nil {
-				return fmt.Errorf("failed to build endpoint subsets from pods: %w", err)
+				return "", fmt.Errorf("failed to build endpoint subsets from pods: %w", err)
 			}
 			
 			modifiedEndpoints.Subsets = newSubsets
@@ -86,17 +87,17 @@ func MisrouteService(client *kubernetes.Clientset, svcName, namespace, replaceSe
 				utils.DryRun(fmt.Sprintf("    Subset %d: %d addresses, %d ports", i+1, len(subset.Addresses), len(subset.Ports)))
 			}
 		}
-		return nil
+		return "", nil
 	}
 
 	// Update the endpoints
 	_, err = client.CoreV1().Endpoints(namespace).Update(context.TODO(), modifiedEndpoints, metav1.UpdateOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to update endpoints: %w", err)
+		return "", fmt.Errorf("failed to update endpoints: %w", err)
 	}
 
 	utils.Info("Successfully updated service endpoints")
-	return nil
+	return backupPath, nil
 }
 
 // buildEndpointSubsetsFromPods creates endpoint subsets from pod information
@@ -175,17 +176,17 @@ func buildEndpointSubsetsFromPods(pods []corev1.Pod, servicePorts []corev1.Servi
 }
 
 // saveOriginalEndpoints saves the original endpoints to disk for rollback
-func saveOriginalEndpoints(endpoints *corev1.Endpoints, svcName, namespace string) error {
+func saveOriginalEndpoints(endpoints *corev1.Endpoints, svcName, namespace string) (string, error) {
 	// Create rollback directory
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("failed to get user home directory: %w", err)
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
 
 	rollbackDir := filepath.Join(homeDir, ".tipsy", "rollback")
 	err = os.MkdirAll(rollbackDir, 0755)
 	if err != nil {
-		return fmt.Errorf("failed to create rollback directory: %w", err)
+		return "", fmt.Errorf("failed to create rollback directory: %w", err)
 	}
 
 	// Create filename
@@ -195,15 +196,15 @@ func saveOriginalEndpoints(endpoints *corev1.Endpoints, svcName, namespace strin
 	// Marshal endpoints to JSON
 	data, err := json.MarshalIndent(endpoints, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal endpoints to JSON: %w", err)
+		return "", fmt.Errorf("failed to marshal endpoints to JSON: %w", err)
 	}
 
 	// Write to file
 	err = os.WriteFile(filepath, data, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to write endpoints to file: %w", err)
+		return "", fmt.Errorf("failed to write endpoints to file: %w", err)
 	}
 
 	utils.Info(fmt.Sprintf("Saved original endpoints to %s for rollback", filepath))
-	return nil
+	return filepath, nil
 }

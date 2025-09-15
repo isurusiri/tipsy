@@ -140,6 +140,56 @@ func ReloadStateFilePath() {
 	stateFile = filepath.Join(homeDir, ".tipsy", "state.json")
 }
 
+// DeleteAction removes a specific action from the state file
+func DeleteAction(actionToDelete ChaosAction) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Load existing actions
+	actions, err := loadActions()
+	if err != nil {
+		return fmt.Errorf("failed to load existing actions: %w", err)
+	}
+
+	// Find and remove the action
+	var newActions []ChaosAction
+	found := false
+	for _, action := range actions {
+		// Compare actions by all fields to ensure we're removing the right one
+		if action.Type == actionToDelete.Type &&
+			action.TargetPod == actionToDelete.TargetPod &&
+			action.Namespace == actionToDelete.Namespace &&
+			action.Timestamp == actionToDelete.Timestamp {
+			found = true
+			continue // Skip this action (effectively removing it)
+		}
+		newActions = append(newActions, action)
+	}
+
+	if !found {
+		return fmt.Errorf("action not found in state")
+	}
+
+	// Ensure the directory exists
+	dir := filepath.Dir(stateFile)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create state directory: %w", err)
+	}
+
+	// Marshal to pretty-printed JSON
+	data, err := json.MarshalIndent(newActions, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal actions to JSON: %w", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(stateFile, data, 0644); err != nil {
+		return fmt.Errorf("failed to write state file: %w", err)
+	}
+
+	return nil
+}
+
 // ClearActions removes all actions from the state file
 func ClearActions() error {
 	mu.Lock()
