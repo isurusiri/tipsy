@@ -434,6 +434,182 @@ func BenchmarkInjectLatency(b *testing.B) {
 	}
 }
 
+func TestInjectLatency_DryRunComprehensive(t *testing.T) {
+	// Disable color for testing
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	// Reset global config
+	originalConfig := config.GlobalConfig
+	defer func() {
+		config.GlobalConfig = originalConfig
+	}()
+
+	testCases := []struct {
+		name        string
+		namespace   string
+		selector    string
+		delay       string
+		duration    time.Duration
+		description string
+	}{
+		{
+			name:        "dry run with valid parameters",
+			namespace:   "default",
+			selector:    "app=nginx",
+			delay:       "200ms",
+			duration:    30 * time.Second,
+			description: "Should simulate latency injection without API calls",
+		},
+		{
+			name:        "dry run with different namespace",
+			namespace:   "production",
+			selector:    "tier=frontend",
+			delay:       "500ms",
+			duration:    60 * time.Second,
+			description: "Should simulate latency injection in different namespace",
+		},
+		{
+			name:        "dry run with high delay",
+			namespace:   "default",
+			selector:    "app=nginx",
+			delay:       "2s",
+			duration:    5 * time.Minute,
+			description: "Should handle high delay values in dry run",
+		},
+		{
+			name:        "dry run with complex selector",
+			namespace:   "default",
+			selector:    "app=nginx,environment=staging",
+			delay:       "100ms",
+			duration:    10 * time.Second,
+			description: "Should handle complex selectors in dry run",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a fake client (but we won't add any pods since dry-run should avoid API calls)
+			fakeClient := fake.NewSimpleClientset()
+
+			// Execute InjectLatency in dry-run mode
+			affectedPods, err := InjectLatency(fakeClient, tc.namespace, tc.selector, tc.delay, tc.duration, true)
+
+			// Should not return an error
+			if err != nil {
+				t.Errorf("Unexpected error in dry-run mode: %v - %s", err, tc.description)
+			}
+
+			// Should return empty slice in dry-run mode
+			if len(affectedPods) != 0 {
+				t.Errorf("Expected empty slice in dry-run mode, got %d pods - %s", len(affectedPods), tc.description)
+			}
+
+			// Verify no pods were actually created or modified
+			pods, err := fakeClient.CoreV1().Pods(tc.namespace).List(context.TODO(), metav1.ListOptions{})
+			if err != nil {
+				t.Fatalf("Failed to list pods: %v", err)
+			}
+
+			// Should have no pods since we never created any
+			if len(pods.Items) != 0 {
+				t.Errorf("Expected no pods in fake client, got %d - %s", len(pods.Items), tc.description)
+			}
+		})
+	}
+}
+
+func TestInjectPacketLoss_DryRunComprehensive(t *testing.T) {
+	// Disable color for testing
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	// Reset global config
+	originalConfig := config.GlobalConfig
+	defer func() {
+		config.GlobalConfig = originalConfig
+	}()
+
+	testCases := []struct {
+		name        string
+		namespace   string
+		selector    string
+		loss        string
+		duration    time.Duration
+		description string
+	}{
+		{
+			name:        "dry run with valid parameters",
+			namespace:   "default",
+			selector:    "app=nginx",
+			loss:        "30%",
+			duration:    30 * time.Second,
+			description: "Should simulate packet loss injection without API calls",
+		},
+		{
+			name:        "dry run with different namespace",
+			namespace:   "production",
+			selector:    "tier=frontend",
+			loss:        "50%",
+			duration:    60 * time.Second,
+			description: "Should simulate packet loss injection in different namespace",
+		},
+		{
+			name:        "dry run with high loss percentage",
+			namespace:   "default",
+			selector:    "app=nginx",
+			loss:        "90%",
+			duration:    5 * time.Minute,
+			description: "Should handle high loss percentages in dry run",
+		},
+		{
+			name:        "dry run with complex selector",
+			namespace:   "default",
+			selector:    "app=nginx,environment=staging",
+			loss:        "10%",
+			duration:    10 * time.Second,
+			description: "Should handle complex selectors in dry run",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a fake client (but we won't add any pods since dry-run should avoid API calls)
+			fakeClient := fake.NewSimpleClientset()
+
+			// Execute InjectPacketLoss in dry-run mode
+			affectedPods, err := InjectPacketLoss(fakeClient, tc.namespace, tc.selector, tc.loss, tc.duration, true)
+
+			// Should not return an error
+			if err != nil {
+				t.Errorf("Unexpected error in dry-run mode: %v - %s", err, tc.description)
+			}
+
+			// Should return empty slice in dry-run mode
+			if len(affectedPods) != 0 {
+				t.Errorf("Expected empty slice in dry-run mode, got %d pods - %s", len(affectedPods), tc.description)
+			}
+
+			// Verify no pods were actually created or modified
+			pods, err := fakeClient.CoreV1().Pods(tc.namespace).List(context.TODO(), metav1.ListOptions{})
+			if err != nil {
+				t.Fatalf("Failed to list pods: %v", err)
+			}
+
+			// Should have no pods since we never created any
+			if len(pods.Items) != 0 {
+				t.Errorf("Expected no pods in fake client, got %d - %s", len(pods.Items), tc.description)
+			}
+		})
+	}
+}
+
 func BenchmarkInjectLatency_DryRun(b *testing.B) {
 	// Disable color for benchmarking
 	originalNoColor := color.NoColor

@@ -16,6 +16,15 @@ import (
 func KillPods(client kubernetes.Interface, namespace, selector string, count int, dryRun bool) ([]string, error) {
 	utils.Info(fmt.Sprintf("Searching for pods with selector '%s' in namespace '%s'", selector, namespace))
 
+	// In dry-run mode, simulate the operation without making API calls
+	if dryRun {
+		utils.DryRun(fmt.Sprintf("Would search for pods with selector '%s' in namespace '%s'", selector, namespace))
+		utils.DryRun(fmt.Sprintf("Would randomly select %d pod(s) to delete", count))
+		utils.DryRun(fmt.Sprintf("Would delete %d pod(s) matching selector '%s'", count, selector))
+		// Return empty slice for dry-run as we can't determine actual pod names
+		return []string{}, nil
+	}
+
 	// List pods matching the selector
 	pods, err := client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: selector,
@@ -57,26 +66,17 @@ func KillPods(client kubernetes.Interface, namespace, selector string, count int
 	var killedPods []string
 
 	// Execute the kill operation
-	if dryRun {
-		utils.DryRun(fmt.Sprintf("Would delete %d pod(s):", len(selectedPods)))
-		for _, podName := range selectedPods {
-			utils.DryRun(fmt.Sprintf("  - %s", podName))
-		}
-		// In dry run, return the selected pods as if they were killed
-		killedPods = selectedPods
-	} else {
-		utils.Info(fmt.Sprintf("Deleting %d pod(s):", len(selectedPods)))
-		for _, podName := range selectedPods {
-			utils.Info(fmt.Sprintf("  Deleting pod: %s", podName))
-			
-			err := client.CoreV1().Pods(namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
-			if err != nil {
-				utils.Error(fmt.Sprintf("Failed to delete pod '%s': %v", podName, err))
-				// Continue with other pods even if one fails
-			} else {
-				utils.Info(fmt.Sprintf("  Successfully deleted pod: %s", podName))
-				killedPods = append(killedPods, podName)
-			}
+	utils.Info(fmt.Sprintf("Deleting %d pod(s):", len(selectedPods)))
+	for _, podName := range selectedPods {
+		utils.Info(fmt.Sprintf("  Deleting pod: %s", podName))
+		
+		err := client.CoreV1().Pods(namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
+		if err != nil {
+			utils.Error(fmt.Sprintf("Failed to delete pod '%s': %v", podName, err))
+			// Continue with other pods even if one fails
+		} else {
+			utils.Info(fmt.Sprintf("  Successfully deleted pod: %s", podName))
+			killedPods = append(killedPods, podName)
 		}
 	}
 

@@ -391,6 +391,89 @@ func BenchmarkKillPods(b *testing.B) {
 	}
 }
 
+func TestKillPods_DryRunComprehensive(t *testing.T) {
+	// Disable color for testing
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	// Reset global config
+	originalConfig := config.GlobalConfig
+	defer func() {
+		config.GlobalConfig = originalConfig
+	}()
+
+	testCases := []struct {
+		name        string
+		namespace   string
+		selector    string
+		count       int
+		description string
+	}{
+		{
+			name:        "dry run with valid selector",
+			namespace:   "default",
+			selector:    "app=nginx",
+			count:       2,
+			description: "Should simulate killing pods without API calls",
+		},
+		{
+			name:        "dry run with different namespace",
+			namespace:   "production",
+			selector:    "tier=frontend",
+			count:       1,
+			description: "Should simulate killing pods in different namespace",
+		},
+		{
+			name:        "dry run with zero count",
+			namespace:   "default",
+			selector:    "app=nginx",
+			count:       0,
+			description: "Should handle zero count in dry run",
+		},
+		{
+			name:        "dry run with high count",
+			namespace:   "default",
+			selector:    "app=nginx",
+			count:       100,
+			description: "Should handle high count in dry run",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a fake client (but we won't add any pods since dry-run should avoid API calls)
+			fakeClient := fake.NewSimpleClientset()
+
+			// Execute KillPods in dry-run mode
+			killedPods, err := KillPods(fakeClient, tc.namespace, tc.selector, tc.count, true)
+
+			// Should not return an error
+			if err != nil {
+				t.Errorf("Unexpected error in dry-run mode: %v - %s", err, tc.description)
+			}
+
+			// Should return empty slice in dry-run mode
+			if len(killedPods) != 0 {
+				t.Errorf("Expected empty slice in dry-run mode, got %d pods - %s", len(killedPods), tc.description)
+			}
+
+			// Verify no pods were actually created or modified
+			pods, err := fakeClient.CoreV1().Pods(tc.namespace).List(context.TODO(), metav1.ListOptions{})
+			if err != nil {
+				t.Fatalf("Failed to list pods: %v", err)
+			}
+
+			// Should have no pods since we never created any
+			if len(pods.Items) != 0 {
+				t.Errorf("Expected no pods in fake client, got %d - %s", len(pods.Items), tc.description)
+			}
+		})
+	}
+}
+
 func BenchmarkKillPods_DryRun(b *testing.B) {
 	// Disable color for benchmarking
 	originalNoColor := color.NoColor

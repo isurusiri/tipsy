@@ -19,6 +19,16 @@ import (
 func InjectCPUStress(client kubernetes.Interface, namespace, selector, method string, duration time.Duration, dryRun bool) ([]string, error) {
 	utils.Info(fmt.Sprintf("Searching for pods with selector '%s' in namespace '%s'", selector, namespace))
 
+	// In dry-run mode, simulate the operation without making API calls
+	if dryRun {
+		utils.DryRun(fmt.Sprintf("Would search for pods with selector '%s' in namespace '%s'", selector, namespace))
+		utils.DryRun(fmt.Sprintf("Would inject CPU stress to all running pods matching selector"))
+		utils.DryRun(fmt.Sprintf("Would add ephemeral containers with method: %s", method))
+		utils.DryRun(fmt.Sprintf("Would run CPU stress for duration: %s", duration))
+		// Return empty slice for dry-run as we can't determine actual pod names
+		return []string{}, nil
+	}
+
 	// List pods matching the selector
 	pods, err := client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: selector,

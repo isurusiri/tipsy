@@ -18,6 +18,16 @@ import (
 func InjectLatency(client kubernetes.Interface, namespace, selector, delay string, duration time.Duration, dryRun bool) ([]string, error) {
 	utils.Info(fmt.Sprintf("Searching for pods with selector '%s' in namespace '%s'", selector, namespace))
 
+	// In dry-run mode, simulate the operation without making API calls
+	if dryRun {
+		utils.DryRun(fmt.Sprintf("Would search for pods with selector '%s' in namespace '%s'", selector, namespace))
+		utils.DryRun(fmt.Sprintf("Would inject latency to all running pods matching selector"))
+		utils.DryRun(fmt.Sprintf("Would add ephemeral containers with image: ghcr.io/chaos-tools/netem:latest"))
+		utils.DryRun(fmt.Sprintf("Would apply tc netem delay: %s for duration: %s", delay, duration))
+		// Return empty slice for dry-run as we can't determine actual pod names
+		return []string{}, nil
+	}
+
 	// List pods matching the selector
 	pods, err := client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: selector,
@@ -139,6 +149,16 @@ func getMainProcessName() string {
 // Returns the list of pod names that were affected by the packet loss injection
 func InjectPacketLoss(client kubernetes.Interface, namespace, selector, loss string, duration time.Duration, dryRun bool) ([]string, error) {
 	utils.Info(fmt.Sprintf("Searching for pods with selector '%s' in namespace '%s'", selector, namespace))
+
+	// In dry-run mode, simulate the operation without making API calls
+	if dryRun {
+		utils.DryRun(fmt.Sprintf("Would search for pods with selector '%s' in namespace '%s'", selector, namespace))
+		utils.DryRun(fmt.Sprintf("Would inject packet loss to all running pods matching selector"))
+		utils.DryRun(fmt.Sprintf("Would add ephemeral containers with image: ghcr.io/chaos-tools/netem:latest"))
+		utils.DryRun(fmt.Sprintf("Would apply tc netem loss: %s for duration: %s", loss, duration))
+		// Return empty slice for dry-run as we can't determine actual pod names
+		return []string{}, nil
+	}
 
 	// List pods matching the selector
 	pods, err := client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{

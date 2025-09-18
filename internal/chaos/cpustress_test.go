@@ -646,6 +646,94 @@ func BenchmarkInjectCPUStress_Yes(b *testing.B) {
 	}
 }
 
+func TestInjectCPUStress_DryRunComprehensive(t *testing.T) {
+	// Disable color for testing
+	originalNoColor := color.NoColor
+	color.NoColor = true
+	defer func() {
+		color.NoColor = originalNoColor
+	}()
+
+	// Reset global config
+	originalConfig := config.GlobalConfig
+	defer func() {
+		config.GlobalConfig = originalConfig
+	}()
+
+	testCases := []struct {
+		name        string
+		namespace   string
+		selector    string
+		method      string
+		duration    time.Duration
+		description string
+	}{
+		{
+			name:        "dry run with stress-ng method",
+			namespace:   "default",
+			selector:    "app=nginx",
+			method:      "stress-ng",
+			duration:    30 * time.Second,
+			description: "Should simulate CPU stress injection with stress-ng without API calls",
+		},
+		{
+			name:        "dry run with yes method",
+			namespace:   "production",
+			selector:    "tier=frontend",
+			method:      "yes",
+			duration:    60 * time.Second,
+			description: "Should simulate CPU stress injection with yes method in different namespace",
+		},
+		{
+			name:        "dry run with long duration",
+			namespace:   "default",
+			selector:    "app=nginx",
+			method:      "stress-ng",
+			duration:    10 * time.Minute,
+			description: "Should handle long durations in dry run",
+		},
+		{
+			name:        "dry run with complex selector",
+			namespace:   "default",
+			selector:    "app=nginx,environment=staging",
+			method:      "yes",
+			duration:    10 * time.Second,
+			description: "Should handle complex selectors in dry run",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a fake client (but we won't add any pods since dry-run should avoid API calls)
+			fakeClient := fake.NewSimpleClientset()
+
+			// Execute InjectCPUStress in dry-run mode
+			affectedPods, err := InjectCPUStress(fakeClient, tc.namespace, tc.selector, tc.method, tc.duration, true)
+
+			// Should not return an error
+			if err != nil {
+				t.Errorf("Unexpected error in dry-run mode: %v - %s", err, tc.description)
+			}
+
+			// Should return empty slice in dry-run mode
+			if len(affectedPods) != 0 {
+				t.Errorf("Expected empty slice in dry-run mode, got %d pods - %s", len(affectedPods), tc.description)
+			}
+
+			// Verify no pods were actually created or modified
+			pods, err := fakeClient.CoreV1().Pods(tc.namespace).List(context.TODO(), metav1.ListOptions{})
+			if err != nil {
+				t.Fatalf("Failed to list pods: %v", err)
+			}
+
+			// Should have no pods since we never created any
+			if len(pods.Items) != 0 {
+				t.Errorf("Expected no pods in fake client, got %d - %s", len(pods.Items), tc.description)
+			}
+		})
+	}
+}
+
 func BenchmarkInjectCPUStress_DryRun(b *testing.B) {
 	// Disable color for benchmarking
 	originalNoColor := color.NoColor

@@ -17,6 +17,23 @@ import (
 func MisrouteService(client *kubernetes.Clientset, svcName, namespace, replaceSelector string, removeAll, dryRun bool) (string, error) {
 	utils.Info(fmt.Sprintf("Starting misroute operation for service '%s' in namespace '%s'", svcName, namespace))
 
+	// In dry-run mode, simulate the operation without making API calls
+	if dryRun {
+		utils.DryRun(fmt.Sprintf("Would fetch service '%s' in namespace '%s'", svcName, namespace))
+		utils.DryRun(fmt.Sprintf("Would fetch current endpoints for service '%s'", svcName))
+		utils.DryRun(fmt.Sprintf("Would save original endpoints for rollback"))
+		
+		if removeAll {
+			utils.DryRun(fmt.Sprintf("Would remove all endpoint subsets from service '%s' (no traffic routing)", svcName))
+		} else if replaceSelector != "" {
+			utils.DryRun(fmt.Sprintf("Would search for pods with selector '%s' in namespace '%s'", replaceSelector, namespace))
+			utils.DryRun(fmt.Sprintf("Would replace service endpoints with pods matching selector '%s'", replaceSelector))
+		}
+		
+		utils.DryRun(fmt.Sprintf("Would update endpoints for service '%s'", svcName))
+		return "", nil
+	}
+
 	// Fetch the Service
 	service, err := client.CoreV1().Services(namespace).Get(context.TODO(), svcName, metav1.GetOptions{})
 	if err != nil {
@@ -33,11 +50,9 @@ func MisrouteService(client *kubernetes.Clientset, svcName, namespace, replaceSe
 
 	// Save original endpoints for rollback
 	var backupPath string
-	if !dryRun {
-		backupPath, err = saveOriginalEndpoints(endpoints, svcName, namespace)
-		if err != nil {
-			utils.Warn(fmt.Sprintf("Failed to save original endpoints for rollback: %v", err))
-		}
+	backupPath, err = saveOriginalEndpoints(endpoints, svcName, namespace)
+	if err != nil {
+		utils.Warn(fmt.Sprintf("Failed to save original endpoints for rollback: %v", err))
 	}
 
 	// Create a copy of the endpoints to modify
@@ -74,20 +89,6 @@ func MisrouteService(client *kubernetes.Clientset, svcName, namespace, replaceSe
 			
 			modifiedEndpoints.Subsets = newSubsets
 		}
-	}
-
-	// Log what we're about to do
-	if dryRun {
-		utils.DryRun(fmt.Sprintf("Would update endpoints for service '%s':", svcName))
-		if len(modifiedEndpoints.Subsets) == 0 {
-			utils.DryRun("  - Remove all endpoint subsets (no traffic routing)")
-		} else {
-			utils.DryRun(fmt.Sprintf("  - Replace with %d endpoint subset(s)", len(modifiedEndpoints.Subsets)))
-			for i, subset := range modifiedEndpoints.Subsets {
-				utils.DryRun(fmt.Sprintf("    Subset %d: %d addresses, %d ports", i+1, len(subset.Addresses), len(subset.Ports)))
-			}
-		}
-		return "", nil
 	}
 
 	// Update the endpoints
